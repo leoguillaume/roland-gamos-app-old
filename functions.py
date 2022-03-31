@@ -5,6 +5,28 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
+from matplotlib.colors import Normalize
+import matplotlib.cm as cm
+
+@st.experimental_memo
+def get_layout():
+
+    layout = go.Layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(b=30,l=0,r=0,t=30),
+        annotations=[dict(
+            text="Source : <a href='https://genius.com'>Genius</a>",
+            showarrow=False,
+            xref="paper", yref="paper",
+            x=0.005, y=-0.05,
+            font=dict(color='white')
+        )],
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+    )
+    return layout
 
 @st.experimental_memo
 def get_featuring_graph_chart(_graph, artist_1_id:int, artist_2_id:int, artist_dict:dict):
@@ -52,7 +74,7 @@ def get_featuring_graph_chart(_graph, artist_1_id:int, artist_2_id:int, artist_d
             x = x, 
             y = y, 
             hoverinfo = 'text', 
-            hoverlabel=dict(font_size=12, font=dict(color='white')),
+            hoverlabel=dict(font_size=12, font=dict(color='black')),
             hovertemplate = [f'<b>{j}</b><extra></extra>' for j in t],
             text = t, 
             mode = 'markers',
@@ -80,7 +102,7 @@ def get_featuring_graph_chart(_graph, artist_1_id:int, artist_2_id:int, artist_d
             x = x, 
             y = y, 
             hoverinfo = 'text', 
-            hoverlabel=dict(font_size=12, font=dict(color='white')),
+            hoverlabel=dict(font_size=12, font=dict(color='black')),
             hovertemplate = [f'<b>{j}</b><extra></extra>' for j in t],
             text = t, 
             mode = 'markers',
@@ -177,25 +199,6 @@ def get_featuring_graph_chart(_graph, artist_1_id:int, artist_2_id:int, artist_d
 
         return trace
 
-    def get_layout():
-
-        layout = go.Layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            showlegend=False,
-            hovermode='closest',
-            margin=dict(b=30,l=0,r=0,t=30),
-            annotations=[dict(
-                text="Source : <a href='https://genius.com'>Genius</a>",
-                showarrow=False,
-                xref="paper", yref="paper",
-                x=0.005, y=-0.05,
-                font=dict(color='white')
-            )],
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-        )
-        return layout
-
     lim_1 = 20
     lim_2 = 1
 
@@ -289,6 +292,116 @@ def get_featuring_graph_chart(_graph, artist_1_id:int, artist_2_id:int, artist_d
     return fig
 
 @st.experimental_memo
+def get_artist_graph(_graph, artist_id:int):
+
+    artist_graph = _graph.copy()
+    nneighbors = list(artist_graph.neighbors(artist_id))
+    nodes = nneighbors + [artist_id]
+    remove_nodes = list(set(artist_graph.nodes) - set(nodes))
+    artist_graph.remove_nodes_from(remove_nodes)
+
+    return artist_graph
+
+@st.experimental_memo
+def get_artist_graph_chart(_artist_graph, artist_id:int, artist_dict:dict):
+
+    weight_list =[_artist_graph[artist_id][node]['weight'] for node in _artist_graph[artist_id]]
+    norm = Normalize(vmin=min(weight_list), vmax=max(weight_list))
+    cmap = cm.autumn_r
+    size_list =[_artist_graph.nodes()[node]['size']for node in _artist_graph.nodes()]
+    size_min = round(max(4, max(size_list) * 0.05))
+    node_pos = nx.spring_layout(_artist_graph, seed=1, weight='weight')
+
+    node_traces, edges_traces = list(), list()
+
+    for e1, e2, d in _artist_graph.edges(data=True):
+        x0, y0 = node_pos[e1]
+        x1, y1 = node_pos[e2]
+    
+        if artist_id in [e1, e2]:
+            
+            w = min(norm(d['weight']), 0.6)
+            c = cmap(w)
+            c = f'rgb({round(c[0] * 255)},{round(c[1] * 255)},{round(c[2] * 255)})'
+            other_artist_id = e1 if e1 != artist_id else e2
+            
+            x = [node_pos[other_artist_id][0]]
+            y = [node_pos[other_artist_id][1]]
+            s = _artist_graph.nodes[other_artist_id]['size']
+            t = artist_dict[other_artist_id]
+            o = 0.2
+            
+            trace = go.Scatter(
+                x = x, 
+                y = y, 
+                hoverinfo = 'text', 
+                hoverlabel=dict(font_size=12, font=dict(color='black')),
+                hovertemplate = f'<b>{t}</b><extra></extra>',
+                text = t, 
+                mode = 'markers',
+                marker = dict(
+                    color = c,
+                    opacity = max(w, o),
+                    size = max(s, size_min),
+                    sizemin = 4,
+                    sizeref = 2.5,
+                    line = dict(width=2, color='rgba(255, 255, 255, 0.5)')
+                ),
+            )
+            
+            node_traces.append(trace)
+
+        else:
+            c = 'gray'
+            o = 0.1
+            
+        trace = go.Scatter(
+            x = [x0, x1, None], 
+            y = [y0, y1, None], 
+            line = dict(width=2, color=c), 
+            opacity = o,
+            hoverinfo = 'none',
+            mode = 'lines',
+        )
+        
+        edges_traces.append(trace)
+
+    x = [node_pos[artist_id][0]]
+    y = [node_pos[artist_id][1]]
+    s = [_artist_graph.nodes()[artist_id]['size']]
+    c = cmap(0.99)
+    c = f'rgb({round(c[0] * 255)},{round(c[1] * 255)},{round(c[2] * 255)})'
+    t = [artist_dict[artist_id]]
+    tp = ['top center' if size * 2  - len(text) * 14 < 3 else 'middle center' for text, size in zip(t, s)]
+
+    trace = go.Scatter(
+        x = x, 
+        y = y, 
+        hoverinfo = 'none', 
+        text = t, 
+        mode = 'markers+text',
+        textposition = tp,
+        textfont = dict(color='white', size=14),
+        marker = dict(
+            color = c,
+            opacity = 1,
+            size = s, 
+            sizemin = 4,
+            sizeref = 2.5,
+            line = dict(
+                color = 'rgba(255, 255, 255, 0.2)', 
+                width = 8),
+        ),
+
+    )
+    node_traces = list(np.array(node_traces)[np.argsort(weight_list)])
+
+    fig = go.Figure(data = edges_traces + node_traces +[trace], layout = get_layout())
+
+    return fig
+
+
+@st.experimental_memo
 def get_artist_dict(_sql_cnx):
 
     query = f'SELECT artist_id, artist_name FROM artist'
@@ -314,14 +427,22 @@ def get_album_dict(_sql_cnx):
     return album_dict
 
 @st.experimental_memo
-def get_query(_sql_cnx, query:str):
-
+def query_to_dataframe(_sql_cnx, query, fillna=False):
+    
     cursor = _sql_cnx.cursor()
     cursor.execute(query)
-    result = cursor.fetchall()
+    df = cursor.fetchall()
+    columns = [column.name for column in cursor.description]
     cursor.close()
+    
+    df = pd.DataFrame(df, columns=columns)
+    for column in df.select_dtypes(include='object').columns:
+        df[column] = df[column].str.replace('%27', '\"', regex=False).str.replace('%22', '\'', regex=False)
+    
+    if fillna:
+        df.replace('NULL', np.NaN, inplace=True)
 
-    return result
+    return df
 
 @st.experimental_singleton
 def get_graph_filter_by_years(_graph, year_begin, year_end):
