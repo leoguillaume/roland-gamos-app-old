@@ -444,6 +444,19 @@ def query_to_dataframe(_sql_cnx, query, fillna=False):
 
     return df
 
+@st.experimental_memo
+def get_query(_sql_cnx, query, all:bool=True):
+    
+    cursor = _sql_cnx.cursor()
+    cursor.execute(query)
+    if all:
+        result = cursor.fetchall()
+    else:
+        result = cursor.fetchone()
+    cursor.close()
+
+    return result
+    
 @st.experimental_singleton
 def get_graph_filter_by_years(_graph, year_begin, year_end):
     
